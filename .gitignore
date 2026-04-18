@@ -1,0 +1,15 @@
+node_modules/
+dist/
+.code-intel/
+cpg.bin
+*.cpg.bin
+.env
+.env.local
+*.d.ts
+*.d.ts.map
+*.js.map
+test-*.cjs
+test-*.js
+workspace/
+export/
+export-dot/

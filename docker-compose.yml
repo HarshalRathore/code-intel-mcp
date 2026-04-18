@@ -1,0 +1,41 @@
+version: '3.8'
+
+services:
+  arangodb:
+    image: arangodb/arangodb:3.12
+    container_name: code-intel-arangodb
+    environment:
+      ARANGO_ROOT_PASSWORD: code_intel_dev
+    ports:
+      - "8529:8529"
+    volumes:
+      - arangodb_data:/var/lib/arangodb3
+    restart: unless-stopped
+    healthcheck:
+      test: ["CMD", "curl", "-s", "-o", "/dev/null", "http://localhost:8529/_api/version"]
+      interval: 5s
+      timeout: 3s
+      retries: 10
+
+  code-intel-mcp:
+    build:
+      context: .
+      dockerfile: Dockerfile
+    container_name: code-intel-mcp
+    depends_on:
+      arangodb:
+        condition: service_healthy
+    environment:
+      JOERN_CLI_PATH: /opt/joern/joern-cli
+      ARANGO_HOST: http://arangodb:8529
+      ARANGO_USER: root
+      ARANGO_PASS: code_intel_dev
+      ARANGO_DB: code_intel
+    volumes:
+      - project-data:/projects:ro
+    stdin_open: true
+    restart: unless-stopped
+
+volumes:
+  arangodb_data:
+  project-data:

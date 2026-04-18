@@ -1,0 +1,74 @@
+{
+  "name": "code-intel-mcp",
+  "version": "1.0.0",
+  "description": "Code Intelligence MCP Server — Joern CPG + ArangoDB powered code analysis for AI agents. 14 tools: symbol search, call graphs, data flow, impact analysis, React components, and more.",
+  "type": "module",
+  "bin": {
+    "code-intel-mcp": "./dist/index.js",
+    "code-intel-setup": "./dist/setup.js"
+  },
+  "scripts": {
+    "build": "tsc && sed -i '1i#!/usr/bin/env node' dist/index.js && sed -i '1i#!/usr/bin/env node' dist/setup.js",
+    "dev": "node --loader ts-node/esm src/index.ts",
+    "start": "node dist/index.js",
+    "setup": "node dist/setup.js",
+    "parse": "node dist/index.js --parse-only",
+    "index": "node dist/index.js --index-only",
+    "prepublishOnly": "npm run build",
+    "test": "node --test test/"
+  },
+  "keywords": [
+    "mcp",
+    "model-context-protocol",
+    "code-intelligence",
+    "call-graph",
+    "data-flow",
+    "impact-analysis",
+    "joern",
+    "arangodb",
+    "code-property-graph",
+    "react",
+    "static-analysis",
+    "ai-agent",
+    "llm-tools"
+  ],
+  "author": "Harshal",
+  "license": "MIT",
+  "repository": {
+    "type": "git",
+    "url": "https://github.com/HarshalRathore/code-intel-mcp"
+  },
+  "bugs": {
+    "url": "https://github.com/HarshalRathore/code-intel-mcp/issues"
+  },
+  "homepage": "https://github.com/HarshalRathore/code-intel-mcp#readme",
+  "engines": {
+    "node": ">=18.0.0"
+  },
+  "files": [
+    "dist/**/*.js",
+    "!dist/**/*.d.ts",
+    "!dist/**/*.map",
+    "!dist/test-*",
+    "docker-compose.yml",
+    "Dockerfile",
+    "setup-arangodb.sh"
+  ],
+  "dependencies": {
+    "@modelcontextprotocol/sdk": "^1.10.1",
+    "arangojs": "^9.0.0",
+    "zod": "^3.23.8",
+    "@babel/core": "^7.24.0",
+    "@babel/preset-react": "^7.24.0",
+    "@babel/preset-typescript": "^7.24.0",
+    "@babel/traverse": "^7.24.0",
+    "@babel/parser": "^7.24.0",
+    "ts-morph": "^22.0.0"
+  },
+  "devDependencies": {
+    "@types/node": "^20.12.0",
+    "ts-node": "^10.9.2",
+    "tsx": "^4.21.0",
+    "typescript": "^5.4.5"
+  }
+}
