@@ -541,7 +541,7 @@ export class ArangoClient {
     await this.createGraph();
 
     const joern = joernClient || new JoernClient(
-      process.env.JOERN_CLI_PATH || "/home/harshal/harshal/joern/joern-cli"
+      process.env.JOERN_CLI_PATH || "/opt/joern/joern-cli"
     );
 
     let methods: CpgMethod[] = [];

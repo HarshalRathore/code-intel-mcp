@@ -4,15 +4,15 @@ import { computeManifestHashes, diffManifests, saveManifest, loadManifest } from
 import { join } from 'node:path';
 import { mkdirSync, existsSync } from 'node:fs';
 
-const projectPath = process.argv[2] || '/home/harshal/harshal/repeato/repeato-console';
+const projectPath = process.argv[2] || '.';
 const projectAlias = process.argv[3] || projectPath.split('/').pop();
 const language = process.argv[4] || 'jssrc';
 const sourceDirs = ['src'];
 
-const JOERN_CLI_PATH = process.env.JOERN_CLI_PATH || '/home/harshal/harshal/joern/joern-cli';
+const JOERN_CLI_PATH = process.env.JOERN_CLI_PATH || '/opt/joern/joern-cli';
 const ARANGO_HOST = process.env.ARANGO_HOST || 'http://localhost:8529';
 const ARANGO_USER = process.env.ARANGO_USER || 'root';
-const ARANGO_PASS = process.env.ARANGO_PASS || 'code_intel_dev';
+const ARANGO_PASS = process.env.ARANGO_PASS || '';
 const ARANGO_DB = process.env.ARANGO_DB || 'code_intel';
 
 async function reindex() {

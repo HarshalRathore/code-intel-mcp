@@ -65,7 +65,7 @@ async function installJoern() {
   }
 }
 
-async function startArangoDB() {
+async function startArangoDB(host: string, user: string, pass: string) {
   log("Starting ArangoDB via Docker...");
   try {
     run("docker compose -f docker-compose.yml up -d arangodb", { cwd: process.cwd() });
@@ -73,7 +73,7 @@ async function startArangoDB() {
     let ready = false;
     for (let i = 0; i < 30; i++) {
       try {
-        run(`curl -s -o /dev/null -u root:code_intel_dev http://localhost:8529/_api/version`, { stdio: "pipe" });
+        run(`curl -s -o /dev/null -u "${user}:${pass}" ${host}/_api/version`, { stdio: "pipe" });
         ready = true;
         break;
       } catch {
@@ -125,19 +125,19 @@ async function main() {
 
   const mode = process.argv[2] || "full";
 
+  const arangoHost = process.env.ARANGO_HOST || "http://localhost:8529";
+  const arangoUser = process.env.ARANGO_USER || "root";
+  const arangoPass = process.env.ARANGO_PASS || "";
+  const arangoDb = process.env.ARANGO_DB || "code_intel";
+
   if (mode === "joern" || mode === "full") {
     await installJoern();
   }
 
   if (mode === "arangodb" || mode === "full") {
-    await startArangoDB();
+    await startArangoDB(arangoHost, arangoUser, arangoPass);
     await setupArangoDB();
   }
-
-  const arangoHost = process.env.ARANGO_HOST || "http://localhost:8529";
-  const arangoUser = process.env.ARANGO_USER || "root";
-  const arangoPass = process.env.ARANGO_PASS || "code_intel_dev";
-  const arangoDb = process.env.ARANGO_DB || "code_intel";
 
   writeEnvFile({
     JOERN_CLI_PATH: JOERN_DIR,
