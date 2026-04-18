@@ -4,8 +4,8 @@
   "description": "Code Intelligence MCP Server — Joern CPG + ArangoDB powered code analysis for AI agents. 14 tools: symbol search, call graphs, data flow, impact analysis, React components, and more.",
   "type": "module",
   "bin": {
-    "code-intel-mcp": "./bin/code-intel-mcp.js",
-    "code-intel-setup": "./bin/code-intel-setup.js"
+    "code-intel-mcp": "bin/code-intel-mcp.cjs",
+    "code-intel-setup": "bin/code-intel-setup.cjs"
   },
   "scripts": {
     "build": "tsc",
@@ -36,7 +36,7 @@
   "license": "MIT",
   "repository": {
     "type": "git",
-    "url": "https://github.com/HarshalRathore/code-intel-mcp"
+    "url": "git+https://github.com/HarshalRathore/code-intel-mcp.git"
   },
   "bugs": {
     "url": "https://github.com/HarshalRathore/code-intel-mcp/issues"
@@ -46,6 +46,7 @@
     "node": ">=18.0.0"
   },
   "files": [
+    "bin/",
     "dist/**/*.js",
     "!dist/**/*.d.ts",
     "!dist/**/*.map",
