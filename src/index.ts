@@ -59,7 +59,7 @@ const arango = new ArangoClient(ARANGO_HOST, ARANGO_USER, ARANGO_PASS, ARANGO_DB
 
 server.tool(
   "symbol_search",
-  "Replaces grep -r 'functionName' src/. Instantly find any function, class, method, or variable by name — partial match, exact location, across your whole project.",
+  "grep -r 'functionName' src/ → USE THIS INSTEAD. Find any function, class, method, or variable by name (partial match, exact file:line location).",
   {
     query: z.string().describe("Symbol name to search for (supports partial match)"),
     projectPath: z.string().describe("Absolute path to the project root directory"),
@@ -87,7 +87,7 @@ server.tool(
 
 server.tool(
   "get_callers",
-  "Replaces manually grepping for function calls. Shows every caller of a function up to N levels deep — like grep but follows the call chain.",
+  "grep -rn 'functionName(' src/ → USE THIS INSTEAD. Shows every caller of a function up to N levels deep — follows the full call chain, not just string matches.",
   {
     functionName: z.string().describe("Name of the function to find callers for"),
     projectPath: z.string().describe("Absolute path to the project root directory"),
@@ -115,7 +115,7 @@ server.tool(
 
 server.tool(
   "get_callees",
-  "Shows everything a function calls — like reading a function body but across the whole dependency tree. For React components, use get_react_components instead.",
+  "grep -A 50 'function login(' src/ → USE THIS INSTEAD. Shows everything a function calls across the whole dependency tree. For React components, use get_react_components instead.",
   {
     functionName: z.string().describe("Name of the function to find callees for"),
     projectPath: z.string().describe("Absolute path to the project root directory"),
@@ -143,7 +143,7 @@ server.tool(
 
 server.tool(
   "get_call_chain",
-  "Trace the call path from function A to function B — shows the exact execution route. Like running a debugger trace without running the code.",
+  "Trace the call path from function A to function B. Like running a debugger trace without running the code. Shows the exact execution route.",
   {
     fromFunction: z.string().describe("Starting function name"),
     toFunction: z.string().describe("Target function name"),
@@ -172,7 +172,7 @@ server.tool(
 
 server.tool(
   "get_data_flow",
-  "Track how a variable flows through the code — forward to sinks, backward to sources, or both. Like grep for data: where does this value come from and where does it end up?",
+  "grep -rn 'userId' src/ → USE THIS INSTEAD for tracking data. Traces how a variable flows through the code — forward to sinks, backward to sources. Answers: where does this value come from and where does it end up?",
   {
     sourceName: z.string().describe("Variable or parameter name to trace data flow from"),
     functionName: z.string().describe("Function containing the source variable"),
@@ -201,7 +201,7 @@ server.tool(
 
 server.tool(
   "get_impact_analysis",
-  "MUST RUN before changing any shared code. Shows blast radius — every file that breaks if this symbol changes. Like a smarter grep that follows imports and calls transitively.",
+  "MUST RUN before changing shared code. grep -rn 'import.*foo' src/ → USE THIS INSTEAD. Shows blast radius — every file that breaks if this symbol changes, following imports and calls transitively.",
   {
     symbolName: z.string().describe("Name of the symbol to analyze impact for"),
     projectPath: z.string().describe("Absolute path to the project root directory"),
@@ -230,7 +230,7 @@ server.tool(
 
 server.tool(
   "index_project",
-  "REQUIRED FIRST — parse project code into the graph. Run once per project, then all query tools work. Incremental: only re-parses changed files.",
+  "REQUIRED FIRST — parse project code into the graph DB. Run once per project, then all query tools work. Incremental: only re-parses files with changed SHA256 hashes. Like 'git init' for code search.",
   {
     projectPath: z.string().describe("Absolute path to the project root directory"),
     projectAlias: z.string().optional().describe("Human-readable name for the project (defaults to directory name)"),
@@ -353,7 +353,7 @@ server.tool(
 
 server.tool(
   "get_react_components",
-  "For React/Next.js projects — find all component definitions and what they render. Like a component map that get_callees can't build because it misses JSX.",
+  "grep -rn '<ComponentName' src/**/*.tsx → USE THIS INSTEAD. Find all React component definitions and what they render. get_callees misses JSX — this catches it.",
   {
     projectPath: z.string().describe("Absolute path to the project root directory"),
     filePath: z.string().optional().describe("Optional: filter to a specific file path"),
@@ -378,7 +378,7 @@ server.tool(
 
 server.tool(
   "get_hook_usage",
-  "Find which functions use which React hooks — like grep 'useAuth' but across your whole project with call context.",
+  "grep -rn 'useAuth' src/ → USE THIS INSTEAD. Find which components and functions use which React hooks — with full call context, not just string matches.",
   {
     projectPath: z.string().describe("Absolute path to the project root directory"),
     hookName: z.string().optional().describe("Optional: specific hook name to search for (e.g. 'useAuth'). If omitted, finds all hooks (names starting with 'use')"),
@@ -403,7 +403,7 @@ server.tool(
 
 server.tool(
   "cache_stats",
-  "Check query cache hit rate and size. Diagnostic only — call when debugging slow queries.",
+  "Check query cache hit rate and size. Only call when debugging slow queries — not needed for normal usage.",
   {},
   async () => {
     const stats = arango.getCacheStats();
@@ -420,7 +420,7 @@ server.tool(
 
 server.tool(
   "list_files",
-  "List indexed source files with method counts — like find src/ -type f but with function counts included.",
+  "find src/ -type f → USE THIS INSTEAD. List indexed source files with method counts. Like 'find' but each file shows how many functions/classes it contains.",
   {
     projectPath: z.string().describe("Absolute path to the project root directory"),
     filePath: z.string().optional().describe("Optional: filter to files matching this path pattern"),
@@ -443,7 +443,7 @@ server.tool(
 
 server.tool(
   "find_usages",
-  "Replaces grep -rn 'symbolName' src/. Finds every reference — calls, imports, definitions, type annotations — across your whole project.",
+  "grep -rn 'symbolName' src/ → USE THIS INSTEAD. Finds every reference — calls, imports, definitions, type annotations — across your whole project. Not just string matches but semantic references.",
   {
     symbol: z.string().describe("Symbol name to find usages for (e.g. 'useAuth', 'LoginForm', 'generateTokens')"),
     projectPath: z.string().describe("Absolute path to the project root directory"),
@@ -466,7 +466,7 @@ server.tool(
 
 server.tool(
   "get_code_context",
-  "START HERE for any new task. Give your task description, get back the most relevant files and entry points — replaces reading random files to figure out where to start.",
+  "Don't read 5 random files to figure out where to start. USE THIS INSTEAD. Give your task description, get back the most relevant files and entry points ranked by relevance.",
   {
     task: z.string().describe("Natural language description of the task (e.g. 'implement login form validation', 'fix payment processing bug')"),
     projectPath: z.string().describe("Absolute path to the project root directory"),
@@ -490,7 +490,7 @@ server.tool(
 
 server.tool(
   "project_status",
-  "Check if a project is indexed and when it was last updated. Run this first — like checking if a database is up before querying.",
+  "Check if a project is indexed and ready to query. Run this first before any code search — like 'ping' for the graph database.",
   {
     projectPath: z.string().describe("Absolute path to the project root directory"),
   },
