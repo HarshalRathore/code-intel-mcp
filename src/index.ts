@@ -59,7 +59,7 @@ const arango = new ArangoClient(ARANGO_HOST, ARANGO_USER, ARANGO_PASS, ARANGO_DB
 
 server.tool(
   "symbol_search",
-  "Find a symbol (function, class, method, variable) by name when you know or partially know the name. Use this as the primary discovery tool BEFORE get_callers/get_callees/get_impact_analysis — those tools require an exact symbol name that you should resolve here first. Do not use if you already have the exact symbol name from a prior search or from the code you are reading.",
+  "Replaces grep -r 'functionName' src/. Instantly find any function, class, method, or variable by name — partial match, exact location, across your whole project.",
   {
     query: z.string().describe("Symbol name to search for (supports partial match)"),
     projectPath: z.string().describe("Absolute path to the project root directory"),
@@ -87,7 +87,7 @@ server.tool(
 
 server.tool(
   "get_callers",
-  "Trace who calls a function — find all callers up to N levels deep. Use after symbol_search to get the exact function name. Prefer depth=1 first; increase depth only when you need transitive callers. Do not use for simple 'where is this used' questions — use find_usages instead, which is faster and covers imports/references beyond just call sites.",
+  "Replaces manually grepping for function calls. Shows every caller of a function up to N levels deep — like grep but follows the call chain.",
   {
     functionName: z.string().describe("Name of the function to find callers for"),
     projectPath: z.string().describe("Absolute path to the project root directory"),
@@ -115,7 +115,7 @@ server.tool(
 
 server.tool(
   "get_callees",
-  "Trace what a function calls — find all callees up to N levels deep. Use after symbol_search to get the exact function name. Prefer depth=1 first; increase depth only for deep dependency chains. Do not use to find React component children — use get_react_components instead, which understands JSX component calls that regular call graphs may miss.",
+  "Shows everything a function calls — like reading a function body but across the whole dependency tree. For React components, use get_react_components instead.",
   {
     functionName: z.string().describe("Name of the function to find callees for"),
     projectPath: z.string().describe("Absolute path to the project root directory"),
@@ -143,7 +143,7 @@ server.tool(
 
 server.tool(
   "get_call_chain",
-  "Trace the complete call path between two functions (how does function A reach function B?). Use when you need to understand a specific execution path — e.g. 'how does the auth middleware reach the database layer?'. Do not use for open-ended exploration (use get_callers with depth>1 instead) or when you don't know the target function name.",
+  "Trace the call path from function A to function B — shows the exact execution route. Like running a debugger trace without running the code.",
   {
     fromFunction: z.string().describe("Starting function name"),
     toFunction: z.string().describe("Target function name"),
@@ -172,7 +172,7 @@ server.tool(
 
 server.tool(
   "get_data_flow",
-  "Trace how a variable or parameter flows through the code — forward to sinks, backward to sources, or both. Use for security analysis (taint tracking), understanding data transformation pipelines, or debugging where a value originates/propagates. Do not use for simple 'where is this variable set' questions — use find_usages instead.",
+  "Track how a variable flows through the code — forward to sinks, backward to sources, or both. Like grep for data: where does this value come from and where does it end up?",
   {
     sourceName: z.string().describe("Variable or parameter name to trace data flow from"),
     functionName: z.string().describe("Function containing the source variable"),
@@ -201,7 +201,7 @@ server.tool(
 
 server.tool(
   "get_impact_analysis",
-  "Determine blast radius — what code breaks if a symbol changes. Traces all callers, importers, and dependents transitively. Use BEFORE modifying any shared function, class, or variable to understand the full scope of change. Do not use for single-file changes or when you already know all dependents from a prior get_callers call.",
+  "MUST RUN before changing any shared code. Shows blast radius — every file that breaks if this symbol changes. Like a smarter grep that follows imports and calls transitively.",
   {
     symbolName: z.string().describe("Name of the symbol to analyze impact for"),
     projectPath: z.string().describe("Absolute path to the project root directory"),
@@ -230,7 +230,7 @@ server.tool(
 
 server.tool(
   "index_project",
-  "Parse and index a project's source code into the code graph database. Run this ONCE per project before any other tool — all query tools require an indexed project. Incremental: only re-parses changed files (SHA256 hash diff). Do not re-index unless files changed — check project_status first to see if indexing is current.",
+  "REQUIRED FIRST — parse project code into the graph. Run once per project, then all query tools work. Incremental: only re-parses changed files.",
   {
     projectPath: z.string().describe("Absolute path to the project root directory"),
     projectAlias: z.string().optional().describe("Human-readable name for the project (defaults to directory name)"),
@@ -353,7 +353,7 @@ server.tool(
 
 server.tool(
   "get_react_components",
-  "Find React component definitions and their rendered children in TSX/JSX projects. Identifies PascalCase functions as components and traces their JSX element calls. Use this INSTEAD of get_callees for React/Next.js projects — get_callees misses JSX component calls because Joern models them as iterator stubs. Do not use for non-React projects.",
+  "For React/Next.js projects — find all component definitions and what they render. Like a component map that get_callees can't build because it misses JSX.",
   {
     projectPath: z.string().describe("Absolute path to the project root directory"),
     filePath: z.string().optional().describe("Optional: filter to a specific file path"),
@@ -378,7 +378,7 @@ server.tool(
 
 server.tool(
   "get_hook_usage",
-  "Find React hook usage patterns — which functions use which hooks and where. Use to trace hook adoption (e.g. 'who uses useAuth?', 'where is useState misused?'). Do not use for non-hook symbol searches — use symbol_search or find_usages instead.",
+  "Find which functions use which React hooks — like grep 'useAuth' but across your whole project with call context.",
   {
     projectPath: z.string().describe("Absolute path to the project root directory"),
     hookName: z.string().optional().describe("Optional: specific hook name to search for (e.g. 'useAuth'). If omitted, finds all hooks (names starting with 'use')"),
@@ -403,7 +403,7 @@ server.tool(
 
 server.tool(
   "cache_stats",
-  "Diagnostic: query cache hit rate, evictions, and size. Use only when investigating performance — do not call routinely.",
+  "Check query cache hit rate and size. Diagnostic only — call when debugging slow queries.",
   {},
   async () => {
     const stats = arango.getCacheStats();
@@ -420,7 +420,7 @@ server.tool(
 
 server.tool(
   "list_files",
-  "List indexed source files with method counts. Use to verify a project is indexed correctly or to explore file-level structure. Do not use to search for a specific symbol — use symbol_search instead.",
+  "List indexed source files with method counts — like find src/ -type f but with function counts included.",
   {
     projectPath: z.string().describe("Absolute path to the project root directory"),
     filePath: z.string().optional().describe("Optional: filter to files matching this path pattern"),
@@ -443,7 +443,7 @@ server.tool(
 
 server.tool(
   "find_usages",
-  "Find all references to a symbol — calls, imports, definitions, type references. Faster than get_callers and covers more ground (imports, re-exports, type annotations). Prefer this over get_callers for 'where is X used?' questions. Use get_callers only when you specifically need the call graph depth traversal.",
+  "Replaces grep -rn 'symbolName' src/. Finds every reference — calls, imports, definitions, type annotations — across your whole project.",
   {
     symbol: z.string().describe("Symbol name to find usages for (e.g. 'useAuth', 'LoginForm', 'generateTokens')"),
     projectPath: z.string().describe("Absolute path to the project root directory"),
@@ -466,7 +466,7 @@ server.tool(
 
 server.tool(
   "get_code_context",
-  "Given a task description, discover relevant entry points and related files with relevance scores. Use at the START of a new task to orient yourself before diving into code — replaces manual file-by-file exploration. Returns ranked entry points and files based on symbol name matching, call graph proximity, and file path relevance. Do not use if you already know which files matter from prior exploration.",
+  "START HERE for any new task. Give your task description, get back the most relevant files and entry points — replaces reading random files to figure out where to start.",
   {
     task: z.string().describe("Natural language description of the task (e.g. 'implement login form validation', 'fix payment processing bug')"),
     projectPath: z.string().describe("Absolute path to the project root directory"),
@@ -490,7 +490,7 @@ server.tool(
 
 server.tool(
   "project_status",
-  "Check if a project is indexed, when it was last indexed, and node/edge counts. Use BEFORE index_project to avoid unnecessary re-indexing, and BEFORE any query tool to confirm the project exists in the database. Do not use as a substitute for index_project when a project is not yet indexed.",
+  "Check if a project is indexed and when it was last updated. Run this first — like checking if a database is up before querying.",
   {
     projectPath: z.string().describe("Absolute path to the project root directory"),
   },
