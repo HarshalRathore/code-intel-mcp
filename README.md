@@ -121,6 +121,11 @@ Copy `.env.example` to `.env` and fill in your values.
 | `get_react_components` | React/Next.js component tree exploration | Non-React projects (use `get_callees` instead) |
 | `get_hook_usage` | React hook adoption patterns (who uses `useAuth`?) | Non-hook searches (use `symbol_search`) |
 
+**`get_data_flow` params:** `{ sourceName: string, functionName: string, projectPath: string, direction?: "forward" | "backward" | "both" }`
+  - `sourceName` — variable or parameter to trace
+  - `functionName` — function containing that variable (required)
+  - `direction` — `forward` (where data goes), `backward` (where it comes from), `both` (default: `forward`)
+
 ### Quick Reference
 
 ```
@@ -136,6 +141,25 @@ New task?           → get_code_context
 "Is project indexed?" → project_status
 "Re-index needed?"  → index_project (only if files changed)
 ```
+
+## Error Codes
+
+All tools return structured error responses. `isError: true` in the response means the tool failed — check `content[0].text` for the message.
+
+| Error Message | Cause | Fix |
+|---|---|---|
+| `ArangoDB connection failed: not authorized` | Wrong `ARANGO_USER` or `ARANGO_PASS` | Check your env vars or `.env` file |
+| `ArangoDB connection failed: getaddrinfo EAI_AGAIN` | ArangoDB not reachable | Ensure ArangoDB is running: `docker compose up -d arangodb` |
+| `Joern not found` | `JOERN_CLI_PATH` is wrong or Joern not installed | Run `npx code-intel-mcp setup` or set `JOERN_CLI_PATH` |
+| `Failed to extract methods from CPG` | Joern failed to parse source file(s) | Check that source files are valid JS/TS/JSX/TSX and Joern supports the language |
+| `project not indexed` | `projectPath` has never been indexed | Run `index_project` first |
+| `No files found` | `globPattern` matched nothing | Check the glob pattern and that project path is correct |
+| `Cache error` | ArangoDB returned partial results | Query was served from cache but may be stale — re-index if needed |
+| `TypeError: Cannot read properties of undefined` | Symbol not found in graph | The symbol may not have been indexed (non-method code, runtime-generated functions) |
+| `Error listing projects: ArangoDB connection failed` | ArangoDB unreachable | Same as connection errors above |
+| `Error deleting project: not authorized` | Wrong credentials | Check `ARANGO_USER` / `ARANGO_PASS` |
+
+**MCP protocol errors:** If you see `method not found`, the server version doesn't support that tool — update `code-intel-mcp`.
 
 ## Architecture
 

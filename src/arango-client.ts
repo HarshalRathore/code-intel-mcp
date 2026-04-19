@@ -169,7 +169,6 @@ export class ArangoClient {
           FILTER target.projectPath == ${projectPath}
           FOR caller IN 1..1 INBOUND target cpg_edges
           FILTER caller.label == "METHOD"
-          FILTER caller.filename != "" AND caller.filename != "<empty>"
           RETURN DISTINCT {
             caller: caller.name,
             callerFile: caller.filename,
@@ -191,7 +190,6 @@ export class ArangoClient {
       FILTER target.projectPath == ${projectPath}
       FOR v, e, p IN 1..${depth} INBOUND target GRAPH 'cpg_graph'
       FILTER v.label == "METHOD"
-        FILTER v.filename != "" AND v.filename != "<empty>"
         RETURN DISTINCT {
           caller: v.name,
           callerFile: v.filename,
@@ -223,7 +221,6 @@ export class ArangoClient {
           FILTER source.projectPath == ${projectPath}
           FOR callee IN 1..1 OUTBOUND source cpg_edges
           FILTER callee.label == "METHOD"
-          FILTER callee.filename != "" AND callee.filename != "<empty>"
           RETURN DISTINCT {
             callee: callee.name,
             calleeFile: callee.filename,
@@ -245,7 +242,6 @@ export class ArangoClient {
       FILTER source.projectPath == ${projectPath}
       FOR v, e, p IN 1..${depth} OUTBOUND source GRAPH 'cpg_graph'
       FILTER v.label == "METHOD"
-        FILTER v.filename != "" AND v.filename != "<empty>"
         RETURN DISTINCT {
           callee: v.name,
           calleeFile: v.filename,
@@ -280,7 +276,6 @@ export class ArangoClient {
       FILTER toNode.projectPath == ${projectPath}
       FOR v, e, p IN 1..${maxDepth} OUTBOUND fromNode GRAPH 'cpg_graph'
       OPTIONS { uniqueVertices: "path" }
-      FILTER v.filename != "" AND v.filename != "<empty>"
       FILTER v._id == toNode._id
       LIMIT 10
       RETURN {
@@ -327,7 +322,6 @@ export class ArangoClient {
         FOR v, e, p IN 1..3 OUTBOUND node GRAPH 'cpg_graph'
         OPTIONS { uniqueVertices: "path" }
         FILTER v.label == "METHOD"
-        FILTER v.filename != "" AND v.filename != "<empty>"
         RETURN DISTINCT { from: node.name, to: v.name, type: "DATA_FLOW" }
       `);
       forwardFlows = await cursor.all();
@@ -342,7 +336,6 @@ export class ArangoClient {
         FOR v, e, p IN 1..3 INBOUND node GRAPH 'cpg_graph'
         OPTIONS { uniqueVertices: "path" }
         FILTER v.label == "METHOD"
-        FILTER v.filename != "" AND v.filename != "<empty>"
         RETURN DISTINCT { from: v.name, to: node.name, type: "DATA_FLOW" }
       `);
       backwardFlows = await cursor.all();
@@ -373,7 +366,6 @@ export class ArangoClient {
       ${typeFilter ? (symbolType === "AUTO" ? aql`` : aql`FILTER n.label == ${symbolType}`) : aql``}
       FOR caller IN 1..1 INBOUND n cpg_edges
       FILTER caller.label == "METHOD"
-      FILTER caller.filename != "" AND caller.filename != "<empty>"
       FILTER caller.name != n.name
       RETURN DISTINCT { name: caller.name, file: caller.filename, line: caller.lineNumber }
     `);
@@ -387,7 +379,6 @@ export class ArangoClient {
       ${typeFilter ? (symbolType === "AUTO" ? aql`` : aql`FILTER n.label == ${symbolType}`) : aql``}
       FOR callee IN 1..1 OUTBOUND n cpg_edges
       FILTER callee.label == "METHOD"
-      FILTER callee.filename != "" AND callee.filename != "<empty>"
       RETURN DISTINCT { name: callee.name, file: callee.filename, line: callee.lineNumber }
     `);
 
@@ -400,7 +391,6 @@ export class ArangoClient {
         FILTER n.projectPath == ${projectPath}
         FOR v IN 2..3 ANY n cpg_edges
         FILTER v.label == "METHOD"
-        FILTER v.filename != "" AND v.filename != "<empty>"
         LIMIT ${maxResults}
         RETURN DISTINCT { name: v.name, file: v.filename, line: v.lineNumber }
       `
@@ -424,6 +414,8 @@ export class ArangoClient {
     
     // Strategy: Search for JSX component names (PascalCase) in method code
     // A React component name starts with uppercase letter and is used as <ComponentName /> in JSX
+    // Exclude HTTP method names (Next.js API route handlers) which are misidentified as React components
+    const HTTP_METHODS = ["GET", "POST", "PUT", "PATCH", "DELETE", "OPTIONS", "HEAD"];
     const cursor = await this.db.query(aql`
       FOR n IN cpg_nodes
       FILTER n.label == "METHOD"
@@ -431,6 +423,7 @@ export class ArangoClient {
       FILTER n.filename != "" AND n.filename != "<empty>"
       ${filePath ? aql`FILTER CONTAINS(n.filename, ${filePath})` : aql``}
       FILTER REGEX_TEST(n.name, "^[A-Z][a-zA-Z0-9]*$")
+      FILTER n.name NOT IN ${HTTP_METHODS}
       LET callees = (
         FOR callee IN 1..1 OUTBOUND n cpg_edges
         FILTER callee.label == "METHOD"
@@ -531,6 +524,41 @@ export class ArangoClient {
     return totalDeleted;
   }
 
+  async dropProject(projectAlias: string): Promise<{ nodesDeleted: number; edgesDeleted: number }> {
+    await this.ensureConnection();
+
+    // Delete edges first (referential integrity)
+    const edgesCount = await this.db.query(aql`
+      FOR edge IN cpg_edges
+      FILTER edge.projectAlias == ${projectAlias}
+      COLLECT WITH COUNT INTO cnt
+      RETURN cnt
+    `).then(c => c.all().then(r => r[0] || 0));
+
+    await this.db.query(aql`
+      FOR edge IN cpg_edges
+      FILTER edge.projectAlias == ${projectAlias}
+      REMOVE edge IN cpg_edges
+    `);
+
+    // Then delete nodes
+    const nodesCount = await this.db.query(aql`
+      FOR node IN cpg_nodes
+      FILTER node.projectAlias == ${projectAlias}
+      COLLECT WITH COUNT INTO cnt
+      RETURN cnt
+    `).then(c => c.all().then(r => r[0] || 0));
+
+    await this.db.query(aql`
+      FOR node IN cpg_nodes
+      FILTER node.projectAlias == ${projectAlias}
+      REMOVE node IN cpg_nodes
+    `);
+
+    this.cache.invalidateProject(projectAlias);
+    return { nodesDeleted: nodesCount, edgesDeleted: edgesCount };
+  }
+
   async importCpg(
     cpgBinPath: string,
     projectAlias: string,
@@ -604,32 +632,28 @@ export class ArangoClient {
         };
       });
 
-    const batchSize = 2000;
+    const batchSize = 5000;
     for (let i = 0; i < nodesToInsert.length; i += batchSize) {
       const batch = nodesToInsert.slice(i, i + batchSize);
       try {
-        const cursor = await this.db.query(
-          `FOR doc IN @batch INSERT doc INTO cpg_nodes OPTIONS { overwriteMode: "update" }`,
-          { batch },
-          { batchSize: batch.length }
-        );
-        await cursor.all();
+        const result: any = await this.nodesColl.import(batch, { onDuplicate: "update" });
+        if (result.error || result.errors > 0) {
+          console.error(`Node import: ${result.errors} error(s), ${result.created} created, ${result.updated} updated`);
+        }
       } catch (error) {
-        console.error("Batch insert error (nodes):", error);
+        console.error("Node import error:", error);
       }
     }
 
     for (let i = 0; i < edgesToInsert.length; i += batchSize) {
       const batch = edgesToInsert.slice(i, i + batchSize);
       try {
-        const cursor = await this.db.query(
-          `FOR doc IN @batch INSERT doc INTO cpg_edges OPTIONS { overwriteMode: "update" }`,
-          { batch },
-          { batchSize: batch.length }
-        );
-        await cursor.all();
+        const result: any = await this.edgesColl.import(batch, { onDuplicate: "update" });
+        if (result.error || result.errors > 0) {
+          console.error(`Edge import: ${result.errors} error(s), ${result.created} created, ${result.updated} updated`);
+        }
       } catch (error) {
-        console.error("Batch insert error (edges):", error);
+        console.error("Edge import error:", error);
       }
     }
 
@@ -744,5 +768,56 @@ export class ArangoClient {
       size: stats.size,
       hitRate: total > 0 ? `${((stats.hits / total) * 100).toFixed(1)}%` : "0%",
     };
+  }
+
+  async listProjects(): Promise<Array<{ projectPath: string; projectAlias: string; totalNodes: number; totalEdges: number; totalFiles: number }>> {
+    await this.ensureConnection();
+
+    // Get per-project stats in two queries then combine
+    const [nodesResult, edgesResult, filesResult] = await Promise.all([
+      this.db.query(aql`
+        FOR n IN cpg_nodes
+        FILTER n.label == "METHOD"
+        FILTER n.name != "<init>"
+        FILTER n.name != ":program"
+        FILTER n.projectPath != ""
+        FILTER n.projectPath != null
+        COLLECT projectPath = n.projectPath, projectAlias = n.projectAlias WITH COUNT INTO totalNodes
+        RETURN { projectPath, projectAlias, totalNodes }
+      `),
+      this.db.query(aql`
+        FOR e IN cpg_edges
+        FILTER e.projectAlias != null
+        COLLECT projectAlias = e.projectAlias WITH COUNT INTO totalEdges
+        RETURN { projectAlias, totalEdges }
+      `),
+      this.db.query(aql`
+        FOR n IN cpg_nodes
+        FILTER n.projectPath != ""
+        FILTER n.projectPath != null
+        FILTER n.filename != ""
+        FILTER n.filename != "<empty>"
+        COLLECT projectPath = n.projectPath INTO files = n.filename
+        RETURN { projectPath, totalFiles: LENGTH(UNIQUE(files)) }
+      `),
+    ]);
+
+    const nodesMap = new Map((await nodesResult.all()).map(n => [n.projectPath, n]));
+    const edgesMap = new Map((await edgesResult.all()).map(e => [e.projectAlias, e]));
+    const filesMap = new Map((await filesResult.all()).map(f => [f.projectPath, f]));
+
+    const projects: Array<{ projectPath: string; projectAlias: string; totalNodes: number; totalEdges: number; totalFiles: number }> = [];
+    for (const [projectPath, nodeData] of nodesMap) {
+      const projectAlias = nodeData.projectAlias;
+      projects.push({
+        projectPath,
+        projectAlias,
+        totalNodes: nodeData.totalNodes,
+        totalEdges: edgesMap.get(projectAlias)?.totalEdges || 0,
+        totalFiles: filesMap.get(projectPath)?.totalFiles || 0,
+      });
+    }
+
+    return projects;
   }
 }

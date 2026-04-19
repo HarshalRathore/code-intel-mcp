@@ -48,13 +48,20 @@
   "files": [
     "bin/",
     "dist/**/*.js",
-    "!dist/**/*.d.ts",
+    "dist/**/*.d.ts",
     "!dist/**/*.map",
     "!dist/test-*",
     "docker-compose.yml",
     "Dockerfile",
     "setup-arangodb.sh"
   ],
+  "exports": {
+    ".": {
+      "types": "./dist/index.d.ts",
+      "default": "./dist/index.js"
+    },
+    "./package.json": "./package.json"
+  },
   "dependencies": {
     "@modelcontextprotocol/sdk": "^1.10.1",
     "arangojs": "^9.0.0",

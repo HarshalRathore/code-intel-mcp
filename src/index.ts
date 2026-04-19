@@ -54,6 +54,14 @@ const server = new McpServer({
   version: "0.1.0",
 });
 
+// Handle notifications/initialized per MCP spec — client sends this after server
+// initialization to confirm the connection is ready. No response required.
+const InitializedNotificationSchema = z.object({
+  method: z.literal("notifications/initialized"),
+  params: z.optional(z.object({})).default({}),
+});
+server.server.setNotificationHandler(InitializedNotificationSchema, async () => {});
+
 const joern = new JoernClient(JOERN_CLI_PATH);
 const arango = new ArangoClient(ARANGO_HOST, ARANGO_USER, ARANGO_PASS, ARANGO_DB);
 
@@ -503,6 +511,46 @@ server.tool(
     } catch (error) {
       return {
         content: [{ type: "text" as const, text: `Error getting project status: ${error}` }],
+        isError: true,
+      };
+    }
+  }
+);
+
+server.tool(
+  "list_projects",
+  "List all projects currently indexed in the code intelligence database. Returns project paths, aliases, and basic stats.",
+  {},
+  async () => {
+    try {
+      const projects = await arango.listProjects();
+      return {
+        content: [{ type: "text" as const, text: JSON.stringify(projects, null, 2) }],
+      };
+    } catch (error) {
+      return {
+        content: [{ type: "text" as const, text: `Error listing projects: ${error}` }],
+        isError: true,
+      };
+    }
+  }
+);
+
+server.tool(
+  "delete_project",
+  "Delete all indexed data for a project from the database. Use with caution — this removes all nodes and edges for the project and cannot be undone.",
+  {
+    projectAlias: z.string().describe("The project alias (slug) to delete, e.g. 'my-project' from an earlier index_project call"),
+  },
+  async ({ projectAlias }) => {
+    try {
+      const result = await arango.dropProject(projectAlias);
+      return {
+        content: [{ type: "text" as const, text: JSON.stringify({ success: true, ...result }, null, 2) }],
+      };
+    } catch (error) {
+      return {
+        content: [{ type: "text" as const, text: `Error deleting project: ${error}` }],
         isError: true,
       };
     }

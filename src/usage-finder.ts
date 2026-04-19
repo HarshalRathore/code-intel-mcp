@@ -66,6 +66,25 @@ export function findUsages(
     for (const identifier of identifiers) {
       if (identifier.getText() !== symbol) continue;
 
+      const parent = identifier.getParent();
+      const parentKind = parent?.getKind();
+
+      // Determine if this identifier is a definition (the actual declaration)
+      // vs an import, reference, or call
+      const isDefinition = [
+        SyntaxKind.FunctionDeclaration,
+        SyntaxKind.VariableDeclaration,
+        SyntaxKind.ClassDeclaration,
+        SyntaxKind.InterfaceDeclaration,
+        SyntaxKind.TypeAliasDeclaration,
+        SyntaxKind.EnumDeclaration,
+        SyntaxKind.EnumMember,
+        SyntaxKind.MethodDeclaration,
+        SyntaxKind.PropertyDeclaration,
+        SyntaxKind.GetAccessor,
+        SyntaxKind.SetAccessor,
+      ].includes(parentKind);
+
       const location: UsageLocation = {
         filePath: relative(projectPath, filePath),
         lineNumber: identifier.getStartLineNumber(),
@@ -73,13 +92,10 @@ export function findUsages(
         kind: getUsageKind(identifier),
       };
 
-      const symbolDecl = identifier.getSymbol()?.getDeclarations()[0];
-      if (symbolDecl) {
-        const declFile = symbolDecl.getSourceFile().getFilePath();
-        const declLine = symbolDecl.getStartLineNumber();
-        if (declFile === filePath && declLine === identifier.getStartLineNumber()) {
-          definition = location;
-        }
+      // Only set definition from the first actual declaration found.
+      // Don't let an import override a real declaration.
+      if (isDefinition && !definition) {
+        definition = location;
       }
 
       references.push(location);

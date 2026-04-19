@@ -9,11 +9,14 @@ services:
     volumes:
       - arangodb_data:/var/lib/arangodb3
     restart: unless-stopped
+    mem_limit: 2g
+    cpus: 2
     healthcheck:
-      test: ["CMD", "arangod", "--version"]
-      interval: 5s
-      timeout: 3s
-      retries: 15
+      test: ["CMD-SHELL", "wget -q -O /dev/null --header='Authorization: Basic cm9vdDpjb2RlX2ludGVsX2Rldg==' http://127.0.0.1:8529/_api/version && echo 'OK'"]
+      interval: 10s
+      timeout: 5s
+      retries: 10
+      start_period: 20s
 
   code-intel-mcp:
     build:

@@ -18,7 +18,7 @@ if [ "$HTTP_CODE" != "200" ]; then
   echo "[code-intel-mcp] WARNING: ArangoDB not reachable. Queries will fail until ArangoDB is available."
 fi
 
-bash /app/setup-arangodb.sh 2>/dev/null || true
+bash /app/setup-arangodb.sh 2>&1 || echo "[code-intel-mcp] WARNING: setup-arangodb.sh exited with error — some collections/indexes may already exist (this is OK on restart)"
 
 echo "[code-intel-mcp] Starting MCP server..."
 exec "$@"

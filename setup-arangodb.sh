@@ -127,6 +127,9 @@ create_index "$DB_NAME" "cpg_nodes" "[\"name\"]" false hash
 create_index "$DB_NAME" "cpg_nodes" "[\"label\"]" false hash
 create_index "$DB_NAME" "cpg_nodes" "[\"filename\"]" false hash
 create_index "$DB_NAME" "cpg_nodes" "[\"TYPE_FULL_NAME\"]" false hash
+create_index "$DB_NAME" "cpg_nodes" "[\"projectPath\"]" false hash
+create_index "$DB_NAME" "cpg_nodes" "[\"projectAlias\"]" false hash
+create_index "$DB_NAME" "cpg_nodes" "[\"projectPath\",\"name\"]" false hash
 
 create_index "$DB_NAME" "cpg_edges" "[\"label\"]" false hash
 create_index "$DB_NAME" "cpg_edges" "[\"_from\"]" false hash
