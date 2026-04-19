@@ -40,39 +40,6 @@ Then add to your MCP client config:
 }
 ```
 
-### Option 2: Local install (npx)
-
-**Prerequisites:** Node.js 18+, Java 17+, [Joern](https://joern.io/), [ArangoDB](https://www.arangodb.com/)
-
-```bash
-# Auto-setup: install Joern + start ArangoDB
-npx code-intel-mcp setup
-
-# Or step by step:
-npx code-intel-mcp setup joern    # Install Joern only
-npx code-intel-mcp setup arangodb # Start ArangoDB only
-```
-
-Add to your MCP client config:
-
-```json
-{
-  "mcpServers": {
-    "code-intel": {
-      "command": "npx",
-      "args": ["-y", "code-intel-mcp"],
-      "env": {
-        "JOERN_CLI_PATH": "/opt/joern/joern-cli",
-        "ARANGO_HOST": "http://localhost:8529",
-        "ARANGO_USER": "root",
-        "ARANGO_PASS": "code_intel_dev",
-        "ARANGO_DB": "code_intel"
-      }
-    }
-  }
-}
-```
-
 ## Environment Variables
 
 | Variable | Default | Description |
