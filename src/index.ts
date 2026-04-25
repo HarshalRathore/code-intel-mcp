@@ -1,5 +1,8 @@
 import { McpServer } from "@modelcontextprotocol/sdk/server/mcp.js";
 import { StdioServerTransport } from "@modelcontextprotocol/sdk/server/stdio.js";
+import { StreamableHTTPServerTransport } from "@modelcontextprotocol/sdk/server/streamableHttp.js";
+import { createServer } from "node:http";
+import { randomUUID } from "node:crypto";
 import { z } from "zod";
 import { JoernClient } from "./joern-client.js";
 import { ArangoClient } from "./arango-client.js";
@@ -9,12 +12,15 @@ import { computeManifestHashes, diffManifests, loadManifest, saveManifest } from
 import type { FileManifest } from "./manifest.js";
 import { findUsages } from "./usage-finder.js";
 import { getCodeContext } from "./code-context.js";
+import { LiveWatcher } from "./watcher/live-watcher.js";
 
 const JOERN_CLI_PATH = process.env.JOERN_CLI_PATH || "/opt/joern/joern-cli";
 const ARANGO_HOST = process.env.ARANGO_HOST || "http://localhost:8529";
 const ARANGO_USER = process.env.ARANGO_USER || "root";
 const ARANGO_PASS = process.env.ARANGO_PASS || "";
 const ARANGO_DB = process.env.ARANGO_DB || "code_intel";
+const STREAMABLE_HTTP_PORT = parseInt(process.env.STREAMABLE_HTTP_PORT || "0", 10);
+const HTTP_MODE = STREAMABLE_HTTP_PORT > 0;
 
 if (!process.env.JOERN_CLI_PATH && !existsSync(JOERN_CLI_PATH)) {
   console.error([
@@ -25,16 +31,6 @@ if (!process.env.JOERN_CLI_PATH && !existsSync(JOERN_CLI_PATH)) {
     "Or download from: https://github.com/joernio/joern/releases",
   ].join("\n"));
   process.exit(1);
-}
-
-if (!process.env.ARANGO_PASS && !process.env.ARANGO_HOST) {
-  console.error([
-    "code-intel-mcp: ArangoDB connection not configured.",
-    "",
-    "Set ARANGO_HOST, ARANGO_USER, ARANGO_PASS, ARANGO_DB environment variables.",
-    "Or start ArangoDB locally: docker compose up -d arangodb",
-    "See .env.example for all configuration options.",
-  ].join("\n"));
 }
 
 async function checkArangoConnection(): Promise<void> {
@@ -51,11 +47,9 @@ async function checkArangoConnection(): Promise<void> {
 
 const server = new McpServer({
   name: "code-intel-mcp",
-  version: "0.1.0",
+  version: "0.2.0",
 });
 
-// Handle notifications/initialized per MCP spec — client sends this after server
-// initialization to confirm the connection is ready. No response required.
 const InitializedNotificationSchema = z.object({
   method: z.literal("notifications/initialized"),
   params: z.optional(z.object({})).default({}),
@@ -64,6 +58,15 @@ server.server.setNotificationHandler(InitializedNotificationSchema, async () => 
 
 const joern = new JoernClient(JOERN_CLI_PATH);
 const arango = new ArangoClient(ARANGO_HOST, ARANGO_USER, ARANGO_PASS, ARANGO_DB);
+const liveWatcher = new LiveWatcher(JOERN_CLI_PATH);
+
+async function ensureFreshBeforeQuery(projectPath: string): Promise<void> {
+  const projectList = liveWatcher.getProjectList();
+  const match = projectList.find(p => p.projectPath === projectPath || p.alias === projectPath.split("/").pop());
+  if (match) {
+    await liveWatcher.ensureFresh(match.alias);
+  }
+}
 
 server.tool(
   "symbol_search",
@@ -75,20 +78,11 @@ server.tool(
   },
   async ({ query, projectPath, nodeType }) => {
     try {
+      await ensureFreshBeforeQuery(projectPath);
       const results = await arango.searchSymbols(query, nodeType, projectPath);
-      return {
-        content: [
-          {
-            type: "text" as const,
-            text: JSON.stringify(results, null, 2),
-          },
-        ],
-      };
+      return { content: [{ type: "text" as const, text: JSON.stringify(results, null, 2) }] };
     } catch (error) {
-      return {
-        content: [{ type: "text" as const, text: `Error searching symbols: ${error}` }],
-        isError: true,
-      };
+      return { content: [{ type: "text" as const, text: `Error searching symbols: ${error}` }], isError: true };
     }
   }
 );
@@ -103,20 +97,11 @@ server.tool(
   },
   async ({ functionName, projectPath, depth }) => {
     try {
+      await ensureFreshBeforeQuery(projectPath);
       const results = await arango.getCallers(functionName, projectPath, depth);
-      return {
-        content: [
-          {
-            type: "text" as const,
-            text: JSON.stringify(results, null, 2),
-          },
-        ],
-      };
+      return { content: [{ type: "text" as const, text: JSON.stringify(results, null, 2) }] };
     } catch (error) {
-      return {
-        content: [{ type: "text" as const, text: `Error finding callers: ${error}` }],
-        isError: true,
-      };
+      return { content: [{ type: "text" as const, text: `Error finding callers: ${error}` }], isError: true };
     }
   }
 );
@@ -131,20 +116,11 @@ server.tool(
   },
   async ({ functionName, projectPath, depth }) => {
     try {
+      await ensureFreshBeforeQuery(projectPath);
       const results = await arango.getCallees(functionName, projectPath, depth);
-      return {
-        content: [
-          {
-            type: "text" as const,
-            text: JSON.stringify(results, null, 2),
-          },
-        ],
-      };
+      return { content: [{ type: "text" as const, text: JSON.stringify(results, null, 2) }] };
     } catch (error) {
-      return {
-        content: [{ type: "text" as const, text: `Error finding callees: ${error}` }],
-        isError: true,
-      };
+      return { content: [{ type: "text" as const, text: `Error finding callees: ${error}` }], isError: true };
     }
   }
 );
@@ -160,20 +136,11 @@ server.tool(
   },
   async ({ fromFunction, toFunction, projectPath, maxDepth }) => {
     try {
+      await ensureFreshBeforeQuery(projectPath);
       const results = await arango.getCallChain(fromFunction, toFunction, projectPath, maxDepth);
-      return {
-        content: [
-          {
-            type: "text" as const,
-            text: JSON.stringify(results, null, 2),
-          },
-        ],
-      };
+      return { content: [{ type: "text" as const, text: JSON.stringify(results, null, 2) }] };
     } catch (error) {
-      return {
-        content: [{ type: "text" as const, text: `Error tracing call chain: ${error}` }],
-        isError: true,
-      };
+      return { content: [{ type: "text" as const, text: `Error tracing call chain: ${error}` }], isError: true };
     }
   }
 );
@@ -189,20 +156,11 @@ server.tool(
   },
   async ({ sourceName, functionName, projectPath, direction }) => {
     try {
+      await ensureFreshBeforeQuery(projectPath);
       const results = await arango.getDataFlow(sourceName, functionName, projectPath, direction);
-      return {
-        content: [
-          {
-            type: "text" as const,
-            text: JSON.stringify(results, null, 2),
-          },
-        ],
-      };
+      return { content: [{ type: "text" as const, text: JSON.stringify(results, null, 2) }] };
     } catch (error) {
-      return {
-        content: [{ type: "text" as const, text: `Error tracing data flow: ${error}` }],
-        isError: true,
-      };
+      return { content: [{ type: "text" as const, text: `Error tracing data flow: ${error}` }], isError: true };
     }
   }
 );
@@ -218,20 +176,11 @@ server.tool(
   },
   async ({ symbolName, projectPath, symbolType, maxResults }) => {
     try {
+      await ensureFreshBeforeQuery(projectPath);
       const results = await arango.getImpactAnalysis(symbolName, projectPath, symbolType, maxResults);
-      return {
-        content: [
-          {
-            type: "text" as const,
-            text: JSON.stringify(results, null, 2),
-          },
-        ],
-      };
+      return { content: [{ type: "text" as const, text: JSON.stringify(results, null, 2) }] };
     } catch (error) {
-      return {
-        content: [{ type: "text" as const, text: `Error analyzing impact: ${error}` }],
-        isError: true,
-      };
+      return { content: [{ type: "text" as const, text: `Error analyzing impact: ${error}` }], isError: true };
     }
   }
 );
@@ -250,15 +199,15 @@ server.tool(
       const alias = projectAlias || projectPath.split("/").pop() || "unknown";
       const manifestDir = join(projectPath, ".code-intel");
       const manifestPath = join(manifestDir, "manifest.json");
-      
+
       const currentHashes = computeManifestHashes(projectPath, sourceDirs);
-      
+
       const existingManifest = loadManifest(manifestPath);
-      
+
       if (existingManifest) {
         const diff = diffManifests(existingManifest.fileHashes, currentHashes);
         const hasChanges = diff.added.length > 0 || diff.modified.length > 0 || diff.deleted.length > 0;
-        
+
         if (!hasChanges) {
           return {
             content: [{
@@ -275,14 +224,14 @@ server.tool(
             }],
           };
         }
-        
+
         if (diff.deleted.length > 0) {
           await arango.deleteProjectFiles(alias, diff.deleted);
         }
-        
+
         const parseResult = await joern.parseProject(projectPath, language, sourceDirs);
         const importResult = await arango.importCpg(parseResult.cpgBinPath, alias, projectPath, joern);
-        
+
         const cpgBinHash = await joern.computeCpgBinHash(parseResult.cpgBinPath);
         const newManifest: FileManifest = {
           projectPath,
@@ -296,7 +245,7 @@ server.tool(
           cpgBinHash,
         };
         saveManifest(manifestPath, newManifest);
-        
+
         return {
           content: [{
             type: "text" as const,
@@ -316,12 +265,12 @@ server.tool(
           }],
         };
       }
-      
+
       if (!existsSync(manifestDir)) mkdirSync(manifestDir, { recursive: true });
-      
+
       const parseResult = await joern.parseProject(projectPath, language, sourceDirs);
       const importResult = await arango.importCpg(parseResult.cpgBinPath, alias, projectPath, joern);
-      
+
       const cpgBinHash = await joern.computeCpgBinHash(parseResult.cpgBinPath);
       const manifest: FileManifest = {
         projectPath,
@@ -335,7 +284,7 @@ server.tool(
         cpgBinHash,
       };
       saveManifest(manifestPath, manifest);
-      
+
       return {
         content: [{
           type: "text" as const,
@@ -351,10 +300,7 @@ server.tool(
         }],
       };
     } catch (error) {
-      return {
-        content: [{ type: "text" as const, text: `Error indexing project: ${error}` }],
-        isError: true,
-      };
+      return { content: [{ type: "text" as const, text: `Error indexing project: ${error}` }], isError: true };
     }
   }
 );
@@ -368,18 +314,11 @@ server.tool(
   },
   async ({ projectPath, filePath }) => {
     try {
+      await ensureFreshBeforeQuery(projectPath);
       const results = await arango.getReactComponents(projectPath, filePath);
-      return {
-        content: [{
-          type: "text" as const,
-          text: JSON.stringify(results, null, 2),
-        }],
-      };
+      return { content: [{ type: "text" as const, text: JSON.stringify(results, null, 2) }] };
     } catch (error) {
-      return {
-        content: [{ type: "text" as const, text: `Error finding React components: ${error}` }],
-        isError: true,
-      };
+      return { content: [{ type: "text" as const, text: `Error finding React components: ${error}` }], isError: true };
     }
   }
 );
@@ -393,18 +332,11 @@ server.tool(
   },
   async ({ projectPath, hookName }) => {
     try {
+      await ensureFreshBeforeQuery(projectPath);
       const results = await arango.getHookUsage(projectPath, hookName);
-      return {
-        content: [{
-          type: "text" as const,
-          text: JSON.stringify(results, null, 2),
-        }],
-      };
+      return { content: [{ type: "text" as const, text: JSON.stringify(results, null, 2) }] };
     } catch (error) {
-      return {
-        content: [{ type: "text" as const, text: `Error finding hook usage: ${error}` }],
-        isError: true,
-      };
+      return { content: [{ type: "text" as const, text: `Error finding hook usage: ${error}` }], isError: true };
     }
   }
 );
@@ -415,14 +347,7 @@ server.tool(
   {},
   async () => {
     const stats = arango.getCacheStats();
-    return {
-      content: [
-        {
-          type: "text" as const,
-          text: JSON.stringify(stats, null, 2),
-        },
-      ],
-    };
+    return { content: [{ type: "text" as const, text: JSON.stringify(stats, null, 2) }] };
   }
 );
 
@@ -436,15 +361,11 @@ server.tool(
   },
   async ({ projectPath, filePath, limit }) => {
     try {
+      await ensureFreshBeforeQuery(projectPath);
       const results = await arango.listFiles(projectPath, filePath, limit);
-      return {
-        content: [{ type: "text" as const, text: JSON.stringify(results, null, 2) }],
-      };
+      return { content: [{ type: "text" as const, text: JSON.stringify(results, null, 2) }] };
     } catch (error) {
-      return {
-        content: [{ type: "text" as const, text: `Error listing files: ${error}` }],
-        isError: true,
-      };
+      return { content: [{ type: "text" as const, text: `Error listing files: ${error}` }], isError: true };
     }
   }
 );
@@ -460,14 +381,9 @@ server.tool(
   async ({ symbol, projectPath, sourceDirs }) => {
     try {
       const result = findUsages(projectPath, symbol, sourceDirs);
-      return {
-        content: [{ type: "text" as const, text: JSON.stringify(result, null, 2) }],
-      };
+      return { content: [{ type: "text" as const, text: JSON.stringify(result, null, 2) }] };
     } catch (error) {
-      return {
-        content: [{ type: "text" as const, text: `Error finding usages: ${error}` }],
-        isError: true,
-      };
+      return { content: [{ type: "text" as const, text: `Error finding usages: ${error}` }], isError: true };
     }
   }
 );
@@ -483,15 +399,11 @@ server.tool(
   },
   async ({ task, projectPath, maxEntryPoints, maxRelatedFiles }) => {
     try {
+      await ensureFreshBeforeQuery(projectPath);
       const result = await getCodeContext(task, projectPath, arango, maxEntryPoints, maxRelatedFiles);
-      return {
-        content: [{ type: "text" as const, text: JSON.stringify(result, null, 2) }],
-      };
+      return { content: [{ type: "text" as const, text: JSON.stringify(result, null, 2) }] };
     } catch (error) {
-      return {
-        content: [{ type: "text" as const, text: `Error building code context: ${error}` }],
-        isError: true,
-      };
+      return { content: [{ type: "text" as const, text: `Error building code context: ${error}` }], isError: true };
     }
   }
 );
@@ -505,14 +417,9 @@ server.tool(
   async ({ projectPath }) => {
     try {
       const result = await arango.getProjectStatus(projectPath);
-      return {
-        content: [{ type: "text" as const, text: JSON.stringify(result, null, 2) }],
-      };
+      return { content: [{ type: "text" as const, text: JSON.stringify(result, null, 2) }] };
     } catch (error) {
-      return {
-        content: [{ type: "text" as const, text: `Error getting project status: ${error}` }],
-        isError: true,
-      };
+      return { content: [{ type: "text" as const, text: `Error getting project status: ${error}` }], isError: true };
     }
   }
 );
@@ -524,14 +431,9 @@ server.tool(
   async () => {
     try {
       const projects = await arango.listProjects();
-      return {
-        content: [{ type: "text" as const, text: JSON.stringify(projects, null, 2) }],
-      };
+      return { content: [{ type: "text" as const, text: JSON.stringify(projects, null, 2) }] };
     } catch (error) {
-      return {
-        content: [{ type: "text" as const, text: `Error listing projects: ${error}` }],
-        isError: true,
-      };
+      return { content: [{ type: "text" as const, text: `Error listing projects: ${error}` }], isError: true };
     }
   }
 );
@@ -544,26 +446,219 @@ server.tool(
   },
   async ({ projectAlias }) => {
     try {
+      liveWatcher.unwatchProject(projectAlias);
       const result = await arango.dropProject(projectAlias);
+      return { content: [{ type: "text" as const, text: JSON.stringify({ success: true, ...result }, null, 2) }] };
+    } catch (error) {
+      return { content: [{ type: "text" as const, text: `Error deleting project: ${error}` }], isError: true };
+    }
+  }
+);
+
+server.tool(
+  "watch_project",
+  "Start watching a project for automatic incremental re-indexing. Uses in-process chokidar + manifest diff safety net. No daemon, no IPC — runs inside the MCP server.",
+  {
+    projectPath: z.string().describe("Absolute path to the project root directory"),
+    projectAlias: z.string().optional().describe("Human-readable alias (defaults to directory name)"),
+    sourceDirs: z.array(z.string()).default(["src"]).describe("Source directories to watch (relative to projectPath)"),
+    language: z.enum(["jssrc", "javascript", "java", "python", "c", "cpp", "csharp", "ghidra", "kotlin", "php", "rubysrc", "swiftsrc"]).default("jssrc").describe("Joern language frontend"),
+  },
+  async ({ projectPath, projectAlias, sourceDirs, language }) => {
+    try {
+      const alias = projectAlias || projectPath.split("/").pop() || "unknown";
+
+      const manifestDir = join(projectPath, ".code-intel");
+      const manifestPath = join(manifestDir, "manifest.json");
+      if (!existsSync(manifestPath)) {
+        return {
+          content: [{ type: "text" as const, text: `Project '${alias}' must be indexed first (run index_project). Cannot watch an unindexed project.` }],
+          isError: true,
+        };
+      }
+
+      liveWatcher.watchProject(projectPath, alias, sourceDirs, language);
+
       return {
-        content: [{ type: "text" as const, text: JSON.stringify({ success: true, ...result }, null, 2) }],
+        content: [{
+          type: "text" as const,
+          text: JSON.stringify({
+            success: true,
+            project: alias,
+            path: projectPath,
+            message: `Watching ${alias} — file changes will trigger automatic reindexing after 2s debounce. Manifest diff runs before each query as safety net.`,
+          }, null, 2),
+        }],
       };
     } catch (error) {
-      return {
-        content: [{ type: "text" as const, text: `Error deleting project: ${error}` }],
-        isError: true,
-      };
+      return { content: [{ type: "text" as const, text: `Error watching project: ${error}` }], isError: true };
+    }
+  }
+);
+
+server.tool(
+  "unwatch_project",
+  "Stop watching a project. The project's indexed data is preserved — only the automatic re-indexing is disabled.",
+  {
+    projectAlias: z.string().describe("The project alias to stop watching"),
+  },
+  async ({ projectAlias }) => {
+    liveWatcher.unwatchProject(projectAlias);
+    return {
+      content: [{
+        type: "text" as const,
+        text: JSON.stringify({ success: true, project: projectAlias, message: `Stopped watching ${projectAlias}` }, null, 2),
+      }],
+    };
+  }
+);
+
+server.tool(
+  "watcher_status",
+  "Check the status of the automatic re-indexer. Returns watched projects and whether the watcher is running. (In-process — no daemon.)",
+  {},
+  async () => {
+    const status = liveWatcher.getStatus();
+    return { content: [{ type: "text" as const, text: JSON.stringify({ ...status, architecture: "in-process (no daemon, no IPC)" }, null, 2) }] };
+  }
+);
+
+server.tool(
+  "trigger_reindex",
+  "Manually trigger incremental re-index for a watched project. Bypasses the debounce window.",
+  {
+    projectAlias: z.string().describe("The project alias to re-index"),
+    full: z.boolean().default(false).describe("If true, perform a full re-index (diff all files vs manifest)"),
+  },
+  async ({ projectAlias, full }) => {
+    try {
+      const status = liveWatcher.getStatus();
+      if (!status.watchedProjects.includes(projectAlias)) {
+        return { content: [{ type: "text" as const, text: `Project '${projectAlias}' is not being watched. Use watch_project first.` }], isError: true };
+      }
+
+      const projectList = liveWatcher.getProjectList();
+      const project = projectList.find(p => p.alias === projectAlias);
+      const sourceDirs = project?.sourceDirs || ["src"];
+      const language = project?.language || "jssrc";
+      const projectPath = project?.projectPath || projectAlias;
+
+      const result = await liveWatcher.triggerReindex(
+        projectPath,
+        projectAlias,
+        sourceDirs,
+        language,
+        full
+      );
+
+      return { content: [{ type: "text" as const, text: JSON.stringify(result, null, 2) }] };
+    } catch (error) {
+      return { content: [{ type: "text" as const, text: `Error triggering reindex: ${error}` }], isError: true };
     }
   }
 );
 
 async function main() {
   await checkArangoConnection();
-  const transport = new StdioServerTransport();
-  await server.connect(transport);
-  console.error("code-intel-mcp server running on stdio");
-  console.error(`  Joern: ${JOERN_CLI_PATH}`);
-  console.error(`  ArangoDB: ${ARANGO_HOST} (db: ${ARANGO_DB})`);
+
+  const shutdown = () => {
+    liveWatcher.shutdown().catch(() => {});
+    process.exit(0);
+  };
+  process.on("SIGINT", shutdown);
+  process.on("SIGTERM", shutdown);
+
+  if (HTTP_MODE) {
+    let httpTransport = new StreamableHTTPServerTransport({
+      enableJsonResponse: true,
+      sessionIdGenerator: () => randomUUID(),
+    });
+    let isInitialized = false;
+
+    /**
+     * Handle re-initialization: swap the transport so a new client (e.g., proxy restart)
+     * can initialize again without restarting the entire server daemon.
+     *
+     * The StreamableHTTPServerTransport is stateful — once initialized, it rejects
+     * all subsequent initialize requests with 400. We work around this by:
+     *   1. Closing the old transport (cleans up SSE streams, session state)
+     *   2. Creating a fresh transport
+     *   3. Reconnecting the McpServer (Protocol.connect() accepts a new transport
+     *      after close() sets _transport = undefined)
+     *   4. Routing the current request through the new transport
+     */
+    async function ensureFreshTransport(): Promise<void> {
+      await httpTransport.close();
+      httpTransport = new StreamableHTTPServerTransport({
+        enableJsonResponse: true,
+        sessionIdGenerator: () => randomUUID(),
+      });
+      await server.connect(httpTransport);
+      isInitialized = false;
+      console.error("[code-intel] Transport reset for new client session");
+    }
+
+    const httpServer = createServer(async (req, res) => {
+      const url = new URL(req.url || "/", `http://127.0.0.1:${STREAMABLE_HTTP_PORT}`);
+      if (url.pathname === "/mcp" || url.pathname === "/") {
+        let body: unknown = undefined;
+        if (req.method === "POST") {
+          const chunks: Buffer[] = [];
+          for await (const chunk of req) {
+            chunks.push(Buffer.from(chunk as Buffer));
+          }
+          if (chunks.length > 0) {
+            body = JSON.parse(Buffer.concat(chunks).toString());
+            // Detect re-initialization: a fresh initialize request when already initialized
+            if (isInitialized && typeof body === "object" && body !== null) {
+              const msg = body as { method?: string };
+              if (msg.method === "initialize") {
+                await ensureFreshTransport();
+              }
+            }
+          }
+        }
+        await httpTransport.handleRequest(req, res, body);
+        // Mark as initialized after a successful initialize request
+        if (req.method === "POST" && !isInitialized && typeof body === "object" && body !== null) {
+          const msg = body as { method?: string };
+          if (msg.method === "initialize") {
+            isInitialized = true;
+          }
+        }
+      } else {
+        res.writeHead(404);
+        res.end();
+      }
+    });
+    await server.connect(httpTransport);
+
+    return new Promise<void>((resolve) => {
+      httpServer.on("error", (err: NodeJS.ErrnoException) => {
+        if (err.code === "EADDRINUSE") {
+          console.error(`[code-intel] Port ${STREAMABLE_HTTP_PORT} already in use (another daemon running). Exiting.`);
+          process.exit(0);
+        }
+        console.error("[code-intel] HTTP server error:", err);
+        process.exit(1);
+      });
+      httpServer.listen(STREAMABLE_HTTP_PORT, "127.0.0.1", () => {
+        console.error(`code-intel-mcp server running on Streamable HTTP`);
+        console.error(`  HTTP: http://127.0.0.1:${STREAMABLE_HTTP_PORT}/mcp`);
+        console.error(`  Joern: ${JOERN_CLI_PATH}`);
+        console.error(`  ArangoDB: ${ARANGO_HOST} (db: ${ARANGO_DB})`);
+        console.error(`  Architecture: in-process live watcher (no daemon, no IPC)`);
+        resolve();
+      });
+    });
+  } else {
+    const stdioTransport = new StdioServerTransport();
+    await server.connect(stdioTransport);
+    console.error("code-intel-mcp server running on stdio");
+    console.error(`  Joern: ${JOERN_CLI_PATH}`);
+    console.error(`  ArangoDB: ${ARANGO_HOST} (db: ${ARANGO_DB})`);
+    console.error(`  Architecture: in-process live watcher (no daemon, no IPC)`);
+  }
 }
 
 main().catch((error) => {

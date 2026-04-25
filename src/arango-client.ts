@@ -469,6 +469,111 @@ export class ArangoClient {
     return await cursor.all();
   }
 
+  /** Public: upsert nodes with onDuplicate: "update". Returns counts. */
+  async upsertNodes(nodes: CpgNode[]): Promise<{ added: number; updated: number }> {
+    if (nodes.length === 0) return { added: 0, updated: 0 };
+    await this.ensureConnection();
+    const batchSize = 5000;
+    let added = 0;
+    let updated = 0;
+    for (let i = 0; i < nodes.length; i += batchSize) {
+      const batch = nodes.slice(i, i + batchSize);
+      try {
+        console.error(`[arango-client] upsertNodes: importing ${batch.length} nodes, first _key="${batch[0]._key}"`);
+        const result: any = await this.nodesColl.import(batch, { onDuplicate: "update" });
+        console.error(`[arango-client] upsertNodes result: ${JSON.stringify(result)}`);
+        if (result.created) added += result.created;
+        if (result.updated) updated += result.updated;
+      } catch (error) {
+        console.error("[arango-client] upsertNodes error:", error);
+      }
+    }
+    return { added, updated };
+  }
+
+  /** Public: upsert edges with onDuplicate: "update". Returns counts. */
+  async upsertEdges(edges: CpgEdge[]): Promise<{ added: number; updated: number }> {
+    if (edges.length === 0) return { added: 0, updated: 0 };
+    await this.ensureConnection();
+    const batchSize = 5000;
+    let added = 0;
+    let updated = 0;
+    for (let i = 0; i < edges.length; i += batchSize) {
+      const batch = edges.slice(i, i + batchSize);
+      try {
+        const result: any = await this.edgesColl.import(batch, { onDuplicate: "update" });
+        if (result.created) added += result.created;
+        if (result.updated) updated += result.updated;
+      } catch (error) {
+        console.error("[arango-client] upsertEdges error:", error);
+      }
+    }
+    return { added, updated };
+  }
+
+  /** Delete ALL edges for a project in one query. Used for full edge recomputation. */
+  async deleteProjectEdges(projectAlias: string): Promise<number> {
+    await this.ensureConnection();
+    try {
+      const cursor = await this.db.query(aql`
+        FOR edge IN cpg_edges
+        FILTER edge.projectAlias == ${projectAlias}
+        REMOVE edge IN cpg_edges
+        COLLECT WITH COUNT INTO cnt
+        RETURN cnt
+      `);
+      const result = await cursor.all();
+      const deleted = result[0] || 0;
+      console.error(`[arango-client] deleteProjectEdges: deleted ${deleted} edges for ${projectAlias}`);
+      this.cache.invalidateProject(projectAlias);
+      return deleted;
+    } catch (error) {
+      console.error(`[arango-client] deleteProjectEdges error:`, error);
+      return 0;
+    }
+  }
+
+  /** Delete edges for methods in specific files. Used for incremental (file-scoped) edge recomputation. */
+  async deleteEdgesForFiles(projectAlias: string, filenames: string[]): Promise<number> {
+    if (filenames.length === 0) return 0;
+    await this.ensureConnection();
+    try {
+      const cursor = await this.db.query(aql`
+        FOR edge IN cpg_edges
+        FILTER edge.projectAlias == ${projectAlias}
+        FILTER edge._from IN (FOR node IN cpg_nodes FILTER node.projectAlias == ${projectAlias} AND node.filename IN ${filenames} RETURN node._id)
+           OR edge._to IN (FOR node IN cpg_nodes FILTER node.projectAlias == ${projectAlias} AND node.filename IN ${filenames} RETURN node._id)
+        REMOVE edge IN cpg_edges
+        COLLECT WITH COUNT INTO cnt
+        RETURN cnt
+      `);
+      const result = await cursor.all();
+      const deleted = result[0] || 0;
+      console.error(`[arango-client] deleteEdgesForFiles: deleted ${deleted} edges for ${filenames.length} files in ${projectAlias}`);
+      this.cache.invalidateProject(projectAlias);
+      return deleted;
+    } catch (error) {
+      console.error(`[arango-client] deleteEdgesForFiles error:`, error);
+      return 0;
+    }
+  }
+
+  /** @deprecated Use deleteProjectEdges or deleteEdgesForFiles instead. Deletes edges for a single method name. */
+  async deleteEdgesForMethod(projectAlias: string, methodName: string): Promise<void> {
+    await this.ensureConnection();
+    try {
+      await this.db.query(aql`
+        FOR edge IN cpg_edges
+        FILTER edge.projectAlias == ${projectAlias}
+        FILTER edge._from IN (FOR node IN cpg_nodes FILTER node.projectAlias == ${projectAlias} AND node.name == ${methodName} RETURN node._id)
+           OR edge._to IN (FOR node IN cpg_nodes FILTER node.projectAlias == ${projectAlias} AND node.name == ${methodName} RETURN node._id)
+        REMOVE edge IN cpg_edges
+      `);
+    } catch (error) {
+      console.error(`[arango-client] deleteEdgesForMethod(${methodName}) error:`, error);
+    }
+  }
+
   async truncateProjectData(projectAlias: string): Promise<void> {
     await this.ensureConnection();
     try {

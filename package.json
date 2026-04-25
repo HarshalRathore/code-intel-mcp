@@ -63,15 +63,16 @@
     "./package.json": "./package.json"
   },
   "dependencies": {
-    "@modelcontextprotocol/sdk": "^1.10.1",
-    "arangojs": "^9.0.0",
-    "zod": "^3.23.8",
     "@babel/core": "^7.24.0",
+    "@babel/parser": "^7.24.0",
     "@babel/preset-react": "^7.24.0",
     "@babel/preset-typescript": "^7.24.0",
     "@babel/traverse": "^7.24.0",
-    "@babel/parser": "^7.24.0",
-    "ts-morph": "^22.0.0"
+    "@modelcontextprotocol/sdk": "^1.10.1",
+    "arangojs": "^9.0.0",
+    "chokidar": "^5.0.0",
+    "ts-morph": "^22.0.0",
+    "zod": "^3.23.8"
   },
   "devDependencies": {
     "@types/node": "^20.12.0",
