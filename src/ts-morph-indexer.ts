@@ -14,7 +14,7 @@
  */
 
 import { Project, SourceFile, SyntaxKind, Node, CallExpression, Identifier } from "ts-morph";
-import { existsSync, readFileSync } from "node:fs";
+import { existsSync, readFileSync, readdirSync, statSync } from "node:fs";
 import { join, relative, extname } from "node:path";
 import type { CpgMethod } from "./joern-client.js";
 import type { CpgNode, CpgEdge } from "./arango-client.js";
@@ -59,7 +59,7 @@ export class TsMorphIndexer {
       },
       ...(hasTsConfig
         ? { tsConfigFilePath: tsconfigPath }
-        : { useInMemoryFileSystem: true }),
+        : {}), // No useInMemoryFileSystem — read real files from disk
     });
 
     // Add files if tsconfig didn't auto-add them
@@ -81,7 +81,11 @@ export class TsMorphIndexer {
       try {
         existing.refreshFromFileSystemSync();
       } catch (error) {
-        console.error(`[ts-morph-indexer] Failed to refresh file ${filePath}: ${error}`);
+        // File was deleted between project creation and refresh
+        // Remove it from the project to avoid stale references
+        console.error(`[ts-morph-indexer] File deleted, removing from project: ${filePath}`);
+        this.project.removeSourceFile(existing);
+        this.addedFiles.delete(filePath);
       }
       return;
     }
@@ -542,8 +546,6 @@ export class TsMorphIndexer {
    * Add all source files from the configured source directories.
    */
   private addSourceFilesFromDirs(): void {
-    const { readdirSync, statSync } = require("node:fs") as typeof import("node:fs");
-
     for (const dir of this.sourceDirs) {
       const dirPath = join(this.projectPath, dir);
       if (!existsSync(dirPath)) continue;
