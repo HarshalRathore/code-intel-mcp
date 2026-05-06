@@ -34,6 +34,23 @@ docker run -d --name arangodb -p 8529:8529 -e ARANGO_ROOT_PASSWORD=code_intel_de
 docker compose up -d arangodb
 ```
 
+### Install
+
+**From npm (recommended, no clone needed):**
+
+```bash
+npm install -g code-intel-mcp
+```
+
+**Or clone from source:**
+
+```bash
+git clone https://github.com/HarshalRathore/code-intel-mcp.git
+cd code-intel-mcp
+npm install
+npm run build
+```
+
 ### Add to MCP Client
 
 ```json
@@ -41,7 +58,7 @@ docker compose up -d arangodb
   "mcpServers": {
     "code-intel": {
       "command": "node",
-      "args": ["/path/to/code-intel-mcp/dist/index.js"],
+      "args": ["/usr/lib/node_modules/code-intel-mcp/dist/index.js"],
       "env": {
         "ARANGO_HOST": "http://localhost:8529",
         "ARANGO_USER": "root",
@@ -212,6 +229,10 @@ code-intel-mcp automatically detects file changes and re-indexes them incrementa
 Instead of stdio, run as a persistent HTTP daemon:
 
 ```bash
+# If installed from npm
+STREAMABLE_HTTP_PORT=3001 code-intel-mcp
+
+# If running from source
 STREAMABLE_HTTP_PORT=3001 node dist/index.js
 ```
 
@@ -286,6 +307,8 @@ For non-JS/TS languages, consider tools like [CodeGraph](https://github.com/open
 | MCP protocol | ✅ | ✅ | ❌ (library) | ❌ |
 
 ## Local Development
+
+For contributing or hacking on code-intel-mcp itself:
 
 ```bash
 git clone https://github.com/HarshalRathore/code-intel-mcp.git
