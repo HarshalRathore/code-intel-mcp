@@ -53,7 +53,10 @@
     "!dist/test-*",
     "docker-compose.yml",
     "Dockerfile",
-    "setup-arangodb.sh"
+    "setup-arangodb.sh",
+    "SETUP_PROMPT.md",
+    "README.md",
+    "LICENSE"
   ],
   "exports": {
     ".": {
