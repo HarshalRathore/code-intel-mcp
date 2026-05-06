@@ -70,6 +70,23 @@ npm run build
 }
 ```
 
+## Auto-Setup with AI Agent (Recommended)
+
+Want an AI agent to set this up for you end-to-end? Copy the prompt from [`SETUP_PROMPT.md`](./SETUP_PROMPT.md) and paste it into Claude Code, Codex, pi, OpenCode, or Cursor.
+
+```bash
+# macOS
+cat $(npm root -g)/code-intel-mcp/SETUP_PROMPT.md | pbcopy
+
+# Linux
+cat $(npm root -g)/code-intel-mcp/SETUP_PROMPT.md | xclip
+
+# Or read it directly
+cat $(npm root -g)/code-intel-mcp/SETUP_PROMPT.md
+```
+
+The prompt covers: prerequisite checks, npm install, ArangoDB setup, environment config, project indexing, watcher setup, MCP client configs for all major agents, verification, and troubleshooting — all in one shot.
+
 ## Environment Variables
 
 | Variable | Default | Description |
