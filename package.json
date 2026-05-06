@@ -62,6 +62,9 @@
     },
     "./package.json": "./package.json"
   },
+  "publishConfig": {
+    "access": "public"
+  },
   "dependencies": {
     "@babel/core": "^7.24.0",
     "@babel/parser": "^7.24.0",
