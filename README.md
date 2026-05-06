@@ -4,6 +4,32 @@ Code Intelligence MCP Server — **ts-morph (TypeScript Compiler API) + ArangoDB
 
 20 tools for deep code understanding: symbol search, call graphs, impact analysis, React component trees, hook tracking, and more. Designed for use with Claude Code, Cursor, OpenCode, pi, or any MCP-compatible AI agent.
 
+## Table of Contents
+
+- [Why code-intel-mcp?](#why-code-intel-mcp)
+- [Quick Start](#quick-start)
+  - [Install](#install)
+  - [Setup ArangoDB](#setup-arangodb)
+  - [Add to MCP Client](#add-to-mcp-client)
+- [Auto-Setup with AI Agent](#auto-setup-with-ai-agent-recommended)
+- [Environment Variables](#environment-variables)
+- [Architecture](#architecture)
+- [Tools Reference](#tools-reference)
+  - [Project Lifecycle](#project-lifecycle)
+  - [Search & Discovery](#search--discovery)
+  - [Call Graph](#call-graph)
+  - [Analysis](#analysis)
+  - [Debug](#debug)
+  - [Quick Reference](#quick-reference)
+- [Auto Incremental Indexing](#auto-incremental-indexing)
+- [Streamable HTTP Mode (Daemon)](#streamable-http-mode-daemon)
+- [Supported File Types](#supported-file-types)
+- [Error Codes](#error-codes)
+- [Supported Languages](#supported-languages)
+- [Comparison with Alternatives](#comparison-with-alternatives)
+- [Local Development](#local-development)
+- [License](#license)
+
 ## Why code-intel-mcp?
 
 | Capability | grep/ripgrep | AST tools | **code-intel-mcp** |
